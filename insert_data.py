@@ -1,51 +1,43 @@
-from influxdb_client import InfluxDBClient, Point
-from influxdb_client.client.write_api import WritePrecision, SYNCHRONOUS
+import firebase_admin
+from firebase_admin import credentials, db
 import time
+from datetime import datetime
 
+# Inicializar o Firebase
+cred = credentials.Certificate("simcaf-9ae4d-firebase-adminsdk-fbsvc-ad2aa2c568.json")
+firebase_admin.initialize_app(cred, {
+    "databaseURL": "https://vaccinemonitoring-default-rtdb.firebaseio.com/"
+})
 
-# Configurações do InfluxDB Cloud
-url = "https://us-west-2-1.aws.cloud2.influxdata.com"  # Ajuste para sua região
-token = "seu-token-copiado"  # Cole o token salvo
-org = "VaccineMonitoring"
-bucket = "vaccine_monitoring"
+# Referência ao banco
+ref = db.reference("/")
 
-# Conectar ao InfluxDB (modo síncrono para evitar problema de threads)
-client = InfluxDBClient(url=url, token=token, org=org)
-write_api = client.write_api(write_options=SYNCHRONOUS)
-
-# Dados simulados para sensor_data
-sensor_points = [
-    Point("sensor_data")
-    .tag("sensor_id", "DHT11_01")
-    .tag("location", "Farmacia_A")
-    .field("temperature_raw", 5.2)
-    .field("humidity_raw", 60.5)
-    .field("temperature_filtered", 5.1)  # Placeholder
-    .field("humidity_filtered", 60.3)    # Placeholder
-    .time(time.time_ns(), WritePrecision.NS),
-    Point("sensor_data")
-    .tag("sensor_id", "GuvaS12SD_01")
-    .tag("location", "Farmacia_A")
-    .field("uv_raw", 0.1)
-    .field("uv_filtered", 0.09)  # Placeholder
-    .time(time.time_ns(), WritePrecision.NS)
-]
-
-# Dados simulados para alerts
-alert_point = (
-    Point("alerts")
-    .tag("sensor_id", "DHT11_01")
-    .tag("location", "Farmacia_A")
-    .tag("alert_type", "temperature_high")
-    .field("alert_status", True)
-    .field("alert_message", "Temp Alta: 9°C")
-    .time(time.time_ns(), WritePrecision.NS)
-)
+# Dados simulados
+timestamp = datetime.now().isoformat()
+sensor_data = {
+    "sensor_data": {
+        timestamp: {
+            "sensor_id": "DHT11_01",
+            "location": "Farmacia_A",
+            "temperature_raw": 5.2,
+            "humidity_raw": 60.5,
+            "temperature_filtered": 5.2,
+            "humidity_filtered": 60.5,
+            "timestamp": timestamp
+        }
+    },
+    "alerts": {
+        timestamp: {
+            "sensor_id": "DHT11_01",
+            "location": "Farmacia_A",
+            "alert_type": "temperature_high",
+            "alert_status": True,
+            "alert_message": "Temp Alta: 9°C",
+            "timestamp": timestamp
+        }
+    }
+}
 
 # Inserir dados
-write_api.write(bucket=bucket, org=org, record=sensor_points + [alert_point])
+ref.set(sensor_data)
 print("Dados inseridos com sucesso!")
-
-# Fechar conexão
-client.close()
-
