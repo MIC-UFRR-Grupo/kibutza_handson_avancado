@@ -2,76 +2,52 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db
 import pandas as pd
-import matplotlib.pyplot as plt
-from datetime import datetime
 
-# Inicializar o Firebase (apenas se não inicializado)
-if not firebase_admin._apps:
-    cred = credentials.Certificate("simcaf-9ae4d-firebase-adminsdk-fbsvc-ad2aa2c568.json")
-    firebase_admin.initialize_app(cred, {
-        "databaseURL": "https://simcaf-9ae4d-default-rtdb.firebaseio.com/"
-    })
+# === CONFIGURAÇÃO DO FIREBASE ===
+# Carrega as credenciais do Firebase
+cred = credentials.Certificate("chave_firebase.json")  
+firebase_admin.initialize_app(cred, {
+    "databaseURL": "https://simcaf-9ae4d-default-rtdb.firebaseio.com"
+})
 
-# Função para carregar dados
-@st.cache_data
-def load_data():
-    ref = db.reference("/sensor_data")
-    data = ref.get()
-    if not data:
-        return pd.DataFrame()
-    rows = []
-    for timestamp, values in data.items():
-        values["timestamp"] = timestamp
-        rows.append(values)
-    return pd.DataFrame(rows)
-
-# Configurar Streamlit
-st.title("Sistema de Monitoramento de Cadeia de Frio")
-st.header("Dashboard de Sensores")
-
-# Carregar dados
-df = load_data()
-
-if not df.empty:
-    # Filtrar por localização
-    locations = df["location"].unique()
-    selected_location = st.selectbox("Selecione a Localização", locations)
-
-    # Dados filtrados
-    df_filtered = df[df["location"] == selected_location]
-
-    # Gráfico de temperatura
-    st.subheader("Temperatura (°C)")
-    fig, ax = plt.subplots()
-    ax.plot(df_filtered["timestamp"], df_filtered["temperature_raw"], marker="o", linestyle="-", color="b")
-    ax.set_xlabel("Timestamp")
-    ax.set_ylabel("Temperatura (°C)")
-    ax.set_title("Temperatura ao Longo do Tempo")
-    ax.grid(True)
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
-
-    # Gráfico de umidade
-    st.subheader("Umidade (%)")
-    fig, ax = plt.subplots()
-    ax.plot(df_filtered["timestamp"], df_filtered["humidity_raw"], marker="o", linestyle="-", color="g")
-    ax.set_xlabel("Timestamp")
-    ax.set_ylabel("Umidade (%)")
-    ax.set_title("Umidade ao Longo do Tempo")
-    ax.grid(True)
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
-
-    # Tabela de alertas
-    st.subheader("Alertas Recentes")
-    ref_alerts = db.reference("/alerts")
-    alerts = ref_alerts.get()
-    if alerts:
-        alert_rows = [
-            {"timestamp": ts, **values} for ts, values in alerts.items()
-        ]
-        st.dataframe(pd.DataFrame(alert_rows)[["timestamp", "sensor_id", "alert_type", "alert_message"]])
+# === FUNÇÃO PARA BUSCAR DADOS ===
+def buscar_dados():
+    ref = db.reference("dados/DHT11_01")  # Caminho no Firebase
+    dados = ref.get()
+    if dados:
+        # Converte os dados em um DataFrame
+        df = pd.DataFrame.from_dict(dados, orient="index")
+        df.index = pd.to_datetime(df.index, unit="s")  # Converte timestamps Unix (em segundos) para formato de data legível
+        df.sort_index(inplace=True)  # Ordena pelo timestamp
+        return df
     else:
-        st.warning("Nenhum alerta disponível.")
+        return pd.DataFrame()  # Retorna DataFrame vazio se não houver dados
+
+# === FUNÇÃO PARA BUSCAR ALERTAS ===
+def buscar_alertas():
+    ref = db.reference("alertas")  # Caminho para alertas no Firebase
+    alertas = ref.get()
+    if alertas:
+        return pd.DataFrame.from_dict(alertas, orient="index")
+    else:
+        return pd.DataFrame()
+
+# === INTERFACE DO DASHBOARD ===
+st.title("Dashboard - Monitoramento de Vacinas")
+st.subheader("Dados em Tempo Real")
+
+# Busca e exibe os dados dos sensores
+df = buscar_dados()
+if not df.empty:
+    st.line_chart(df[["temperature", "humidity", "uv"]])  # Gráfico para temperatura, umidade e UV
+    st.dataframe(df.tail(5))  # Mostra as últimas 5 leituras
 else:
-    st.warning("Nenhum dado disponível. Execute insert_data.py primeiro.")
+    st.write("Nenhum dado encontrado.")
+
+# Busca e exibe alertas
+st.subheader("Alertas")
+alertas = buscar_alertas()
+if not alertas.empty:
+    st.dataframe(alertas)  # Mostra os alertas em formato de tabela
+else:
+    st.write("Nenhum alerta registrado.")
